@@ -1,0 +1,66 @@
+Q: "What are the NBA-accredited B.Tech programs at TIST?"
+A: "Civil, Computer Science, Electronics & Communication, Mechanical, Safety & Fire Engineering are NBA-accredited."
+
+Q: "Does TIST offer lateral entry for B.Tech?"
+A: "Yes, TIST offers B.Tech lateral entry for diploma holders in engineering disciplines."
+
+Q: "Which departments are available at TIST?"
+A: "Departments include Civil, Computer Science, Electrical & Electronics, Electronics & Communication, Mechanical, Information Technology, Robotics & Automation, Safety & Fire, and MBA."
+
+2. Admission & Eligibility
+
+Q: "What is the merit quota for B.Tech admission?"
+A: "50% of sanctioned seats are allotted under Government merit quota through KEAM 2025 rank."
+
+Q: "What is the management quota for B.Tech admission?"
+A: "35% of sanctioned seats are allotted by the institute based on XIIth marks and KEAM/JEE 2025 rank."
+
+Q: "What is the NRI quota for B.Tech admission?"
+A: "15% of seats are reserved for NRI candidates. No KEAM/JEE rank is required, but NRI sponsor documents are mandatory."
+
+Q: "What is the minimum PCM requirement for B.Tech admission?"
+A: "45% aggregate marks in Physics, Chemistry, and Mathematics in XIIth standard."
+
+Q: "Can I apply if I have a CBSE or ISC board certificate?"
+A: "Yes, eligibility documents and equivalency certificates are required for candidates outside Kerala HSE board."
+
+Q: "What is the age limit for B.Tech admission?"
+A: "Candidate should have completed 17 years of age as on 31-12-2025."
+
+3. Documents & Instructions
+
+Q: "What is the format for submitting photos in the application?"
+A: "Recent passport-size color photograph with blue background."
+
+Q: "How should scanned documents be submitted?"
+A: "All required documents must be scanned and sent as a single email to certificate@tistcochin.edu.in
+."
+
+Q: "What are the essential details to match in the application form?"
+A: "Name, DOB, mobile number, email, parent's name, admission quota, branch preference, entrance exam details must match original documents."
+
+4. Fee Structure & Scholarships
+
+Q: "Is there a capitation fee for Management quota at TIST?"
+A: "No, there is no capitation fee or donation for admission under Management quota."
+
+Q: "What are the TIST Excellence scholarships for Arts & Sports?"
+A: "International/National achievers get Rs20,000, State-level achievers get Rs30,000 per year. Limited seats, conditions apply."
+
+Q: "What is the Income-cum-Merit scholarship at TIST?"
+A: "Meritorious students with annual family income ≤ Rs1,50,000 get full/partial fee waiver. Limited seats, conditions apply."
+
+Q: "How is the KEAM rank-based scholarship determined?"
+A: "Rank 1–7500: Rs10,000 per year, Rank 7501–15000: Rs25,000 per year. Limited seats, conditions apply."
+
+5. Placement & Contact
+
+Q: "Which companies recruit from TIST?"
+A: "Major recruiters include Google Cloud and other leading industry firms."
+
+Q: "How many graduates have TIST produced?"
+A: "Over 9100 graduates have completed their programs at TIST."
+
+Q: "How can I contact TIST for admissions?"
+A: "Call +91 9995043464 or email admission@tistcochin.edu.in
+. Address: Arakkunnam, Ernakulam, Kerala, 682313."
