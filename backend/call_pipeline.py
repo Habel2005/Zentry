@@ -9,7 +9,8 @@ import audioop
 import os
 from backend.vad_stream import VADStreamer
 from llm.brain import handle_llm
-from db.call_repo import log_message, end_call
+from db.ai_repo import log_processing_step
+from db.call_repo import log_message, end_call, update_call_metrics
 
 # --- 1. GLOBAL ASSET LOADER ---
 # Loads WAV files into RAM once so we don't read disk on every call.
@@ -119,28 +120,60 @@ class CallPipeline:
     async def execute_turn(self, audio_bytes):
         if self.processing_lock.locked(): return
         
+    async def execute_turn(self, audio_bytes):
+        if self.processing_lock.locked(): return
+        
         async with self.processing_lock:
             try:
                 print(f"\n🔒 Pipeline Locked. Processing {len(audio_bytes)} bytes...")
                 
-                # 1. STT
-                text_ml = await self.stt.transcribe(audio_bytes, sample_rate=16000)
+                # --- 1. STT STEP ---
+                stt_start_time = time.time()
+                
+                # Unpack the new return values from stt_worker
+                text_ml, stt_confidence, detected_lang = await self.stt.transcribe(audio_bytes, sample_rate=16000)
+                
+                stt_latency = int((time.time() - stt_start_time) * 1000)
+                
                 if not text_ml or len(text_ml.strip()) < 2: return
 
-                log_message(call_id=self.ctx.call_id, speaker="user", raw_text=text_ml)
+                # Calculate STT Quality
+                stt_quality = "good"
+                if stt_confidence < 0.4:
+                    stt_quality = "failed"
+                elif stt_confidence < 0.7:
+                    stt_quality = "low"
+
+                # Log User Message
+                log_message(
+                    call_id=self.ctx.call_id, 
+                    speaker="user", 
+                    raw_text=text_ml, 
+                    confidence=round(stt_confidence, 2)
+                )
+
+                # Update call session with language and quality
+                update_call_metrics(self.ctx.call_id, detected_lang, stt_quality)
+
+                # Log STT Processing Step
+                log_processing_step(
+                    call_id=self.ctx.call_id,
+                    step_type="STT",
+                    input_data={"audio_bytes_length": len(audio_bytes)},
+                    output_data={"transcribed_text": text_ml, "confidence": stt_confidence},
+                    status="success",
+                    latency_ms=stt_latency
+                )
                 
                 # --- ⚡ SMART FILLER LOGIC ---
-                # If text is long (> 15 chars) and NOT a greeting, play "wait.wav"
-                # This fills the silence while the GPU works.
                 is_greeting = len(text_ml) < 15 or text_ml.strip() in ["ഹലോ", "ഹായ്", "hello"]
-                
                 if not is_greeting:
                     print("⏳ Long query detected. Playing filler audio...")
-                    # We use create_task so it plays in background/parallel if possible,
-                    # but since we are locked, we just await it to ensure user hears it first.
                     await self.play_asset("wait")
 
-                # 2. BRAIN
+                # --- 2. BRAIN (LLM) STEP ---
+                llm_start_time = time.time()
+                
                 response_type, content, log_text = await handle_llm(
                     self.ctx.call_id,
                     self.ctx.caller_id,
@@ -148,19 +181,45 @@ class CallPipeline:
                     text_ml
                 )
                 
+                llm_latency = int((time.time() - llm_start_time) * 1000)
+                
+                # Log LLM Processing Step
+                log_processing_step(
+                    call_id=self.ctx.call_id,
+                    step_type="LLM",
+                    input_data={"prompt": text_ml},
+                    output_data={"response_type": response_type, "content": log_text},
+                    status="success",
+                    latency_ms=llm_latency
+                )
+
+                # Log AI Message to the chat history!
+                if log_text:
+                    log_message(call_id=self.ctx.call_id, speaker="ai", raw_text=log_text)
+
                 if not content: return
 
-                # 3. EXECUTION
+                # --- 3. EXECUTION / TTS STEP ---
                 if response_type == "reflex":
-                    # If we already played 'wait', playing 'intro' might sound weird,
-                    # but 'reflex' usually happens on short texts where we skipped 'wait'.
                     await self.play_asset(content)
-                
                 else:
-                    # TTS
+                    tts_start_time = time.time()
+                    
                     print(f"⏳ Generating TTS for: {log_text[:20]}...")
                     audio_data_np = await asyncio.to_thread(self.tts.tell, content, play=False, sr=16000)
                     
+                    tts_latency = int((time.time() - tts_start_time) * 1000)
+                    
+                    # Log TTS Processing Step
+                    log_processing_step(
+                        call_id=self.ctx.call_id,
+                        step_type="TTS",
+                        input_data={"text_to_speak": content},
+                        output_data={"audio_generated": True},
+                        status="success",
+                        latency_ms=tts_latency
+                    )
+
                     if audio_data_np is None: return
 
                     audio_bytes_total = (audio_data_np * 32767).astype(np.int16).tobytes()
@@ -173,8 +232,18 @@ class CallPipeline:
                 print("✅ Turn Complete.")
 
             except Exception as e:
+                import logging
+                import traceback
                 logging.error(f"Pipeline Error: {e}")
                 traceback.print_exc()
+                
+                # Log Failure Step if something crashes
+                log_processing_step(
+                    call_id=self.ctx.call_id,
+                    step_type="PIPELINE_ERROR",
+                    output_data={"error_message": str(e)},
+                    status="failed"
+                )
 
     async def cleanup(self):
         print(f"🧹 Cleaning up call {self.ctx.call_id}...")

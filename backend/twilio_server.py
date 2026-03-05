@@ -24,7 +24,8 @@ async def lifespan(app: FastAPI):
     # STT usually needs GPU for speed, TTS can be CPU/GPU.
     # The existing code used "models/whisper" and "models/tts/tts_mal.onnx"
     models["stt"] = MalayalamSTT("models/whisper")
-    models["tts"] = TTSModule("models/tts/tts_mal.onnx")
+    # Change from the local folder to the standard Hugging Face ID
+    models["tts"] = TTSModule()
     print("✅ AI Models Ready!")
     yield
     models.clear()
