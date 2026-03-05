@@ -32,11 +32,13 @@ async def extract_and_learn(call_id, phone):
     transcript = "\n".join([f"{msg['role']}: {msg['text']}" for msg in history])
     
     # 2. The Extraction Prompt
+    # --- UPDATE THE PROMPT ---
     extraction_prompt = f"""
     Read the following conversation transcript. Your goal is to extract facts about the user.
     Look for:
     1. The user's name (if they mentioned it).
     2. Their true underlying interest or motivation regarding college courses.
+    3. Did they agree to schedule a consultation with an admissions officer?
     
     Transcript:
     {transcript}
@@ -45,19 +47,27 @@ async def extract_and_learn(call_id, phone):
     {{
         "user_name": "extracted name or null",
         "course_interest": "the program code they want (e.g. CSE) or null",
-        "motivation_or_notes": "A brief sentence explaining WHY they want it, or their true feelings."
+        "motivation_or_notes": "A brief sentence explaining WHY they want it.",
+        "wants_consultation": true or false
     }}
     """
     
     raw_output = await gpu_scheduler.run(engine.model, extraction_prompt, max_tokens=150)
-    
-    # NEW: Extract the actual text string from the raw Llama dictionary response
     raw_json_str = raw_output["choices"][0]["text"]
     
     try:
-        # Clean the output in case the LLM added markdown like ```json
-        clean_json = raw_json_str.replace("```json", "").replace("```", "").strip()
+        # --- NEW ROBUST JSON PARSER ---
+        import re
+        
+        # 1. Search for everything between the first '{' and the last '}'
+        match = re.search(r'\{.*\}', raw_json_str, re.DOTALL)
+        
+        if not match:
+            raise ValueError("No JSON object found in LLM output.")
+            
+        clean_json = match.group(0)
         extracted_data = json.loads(clean_json)
+        # ------------------------------
         
         # 4. Update the Database!
         sb = init_supabase()
@@ -69,12 +79,23 @@ async def extract_and_learn(call_id, phone):
             
         # Update Nuanced Interest in interest_signals
         if extracted_data.get("course_interest"):
-            print(f"🧠 Learned Interest: {extracted_data['course_interest']} ({extracted_data['motivation_or_notes']})")
-            # Insert into interest_signals, but now you could add a "notes" column 
-            # to store their true motivation!
+            print(f"🧠 Learned Interest: {extracted_data['course_interest']} ({extracted_data.get('motivation_or_notes', '')})")
+            
+        # --- ADD CONSULTATION LOGIC ---
+        if extracted_data.get("wants_consultation") is True:
+            name_to_save = extracted_data.get("user_name") or "Unknown"
+            print(f"📅 Consultation requested by {name_to_save}")
+            
+            sb.table("consultation_requests").insert({
+                "call_id": call_id,
+                "caller_phone": phone,
+                "caller_name": name_to_save,
+                "status": "pending"
+            }).execute()
             
     except Exception as e:
         print(f"⚠️ Failed to parse LLM extraction: {e}")
+        print(f"Raw Output Was: {raw_json_str}") # Add this so you can see what it hallucinated!
 
 # Singletons
 engine = PhiEngine("models/llm/Phi-4-mini-instruct-Q5_K_M.gguf")
