@@ -12,7 +12,69 @@ from llm.translate import ml_to_en, en_to_ml
 from db.call_repo import log_message
 from db.ai_repo import log_processing_step, log_intent
 from db.snapshot_repo import get_snapshot
+
+import json
 from db.client import init_supabase
+
+async def extract_and_learn(call_id, phone):
+# Safety check: If memory isn't loaded, skip learning
+    if not session_store:
+        print("⚠️ session_store is None. Skipping extract_and_learn.")
+        return
+
+    # 1. Fetch the full conversation history from your session store
+    session = session_store.get_session(phone)
+    history = session.get("history", [])
+    
+    if len(history) < 2:
+        return # Conversation was too short to learn anything
+        
+    transcript = "\n".join([f"{msg['role']}: {msg['text']}" for msg in history])
+    
+    # 2. The Extraction Prompt
+    extraction_prompt = f"""
+    Read the following conversation transcript. Your goal is to extract facts about the user.
+    Look for:
+    1. The user's name (if they mentioned it).
+    2. Their true underlying interest or motivation regarding college courses.
+    
+    Transcript:
+    {transcript}
+    
+    Output ONLY a raw JSON object with this exact structure:
+    {{
+        "user_name": "extracted name or null",
+        "course_interest": "the program code they want (e.g. CSE) or null",
+        "motivation_or_notes": "A brief sentence explaining WHY they want it, or their true feelings."
+    }}
+    """
+    
+    raw_output = await gpu_scheduler.run(engine.model, extraction_prompt, max_tokens=150)
+    
+    # NEW: Extract the actual text string from the raw Llama dictionary response
+    raw_json_str = raw_output["choices"][0]["text"]
+    
+    try:
+        # Clean the output in case the LLM added markdown like ```json
+        clean_json = raw_json_str.replace("```json", "").replace("```", "").strip()
+        extracted_data = json.loads(clean_json)
+        
+        # 4. Update the Database!
+        sb = init_supabase()
+        
+        # Update Name in caller_profiles
+        if extracted_data.get("user_name"):
+            print(f"🧠 Learned Name: {extracted_data['user_name']}")
+            # Update the caller profile table with the new name
+            
+        # Update Nuanced Interest in interest_signals
+        if extracted_data.get("course_interest"):
+            print(f"🧠 Learned Interest: {extracted_data['course_interest']} ({extracted_data['motivation_or_notes']})")
+            # Insert into interest_signals, but now you could add a "notes" column 
+            # to store their true motivation!
+            
+    except Exception as e:
+        print(f"⚠️ Failed to parse LLM extraction: {e}")
 
 # Singletons
 engine = PhiEngine("models/llm/Phi-4-mini-instruct-Q5_K_M.gguf")

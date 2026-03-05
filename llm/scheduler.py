@@ -4,11 +4,10 @@ class AsyncScheduler:
     def __init__(self, max_concurrent=1):
         self.sem = asyncio.Semaphore(max_concurrent)
 
-    async def run(self, fn, *args):
-        async with self.sem:
-            # This moves the blocking CPU work to a separate thread
-            # keeping your Audio Loop free!
-            return await asyncio.to_thread(fn, *args)
+    async def run(self, fn, *args, **kwargs):
+            async with self.sem:
+                # Pass **kwargs into the thread
+                return await asyncio.to_thread(fn, *args, **kwargs)
 
 # Create two separate instances
 # GPU Scheduler: Strict limit (e.g., 1 or 2) to prevent OOM

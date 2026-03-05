@@ -1,54 +1,42 @@
-import torch
-import soundfile as sf
-from parler_tts import ParlerTTSForConditionalGeneration
-from transformers import AutoTokenizer
+import numpy as np
+import wave
+import os
+from tts.tts_module import TTSModule
 
-print("🚀 Starting PURE NATIVE 3080 Ti Test...")
+def generate_all_assets():
+    os.makedirs("assets", exist_ok=True)
+    
+    # Initialize your new Piper TTS
+    print("Initializing TTS for Asset Generation...")
+    tts = TTSModule(model_path="models/tts/ml_IN-meera-medium.onnx", device="cpu")
 
-device = "cuda"
+    # Define the phrases. Notice we have 3 different "wait" variations!
+    phrases = {
+        "intro": "ഹലോ, ഞാൻ സെൻട്രി. നിങ്ങളുടെ അഡ്മിഷൻ അസിസ്റ്റന്റ് ആണ്. എനിക്ക് എങ്ങനെ സഹായിക്കാനാകും?",
+        "error": "ക്ഷമിക്കണം, നിങ്ങൾ പറഞ്ഞത് എനിക്ക് വ്യക്തമായില്ല. ഒന്നുകൂടി പറയാമോ?",
+        "fallback": "ക്ഷമിക്കണം, ആ വിവരം ഇപ്പോൾ എന്റെ കൈവശമില്ല. ദയവായി വെബ്സൈറ്റ് പരിശോധിക്കുക.",
+        "wait1": "ഒന്ന് നിൽക്കൂ, ഞാൻ അതൊന്ന് പരിശോധിക്കട്ടെ.",
+        "wait2": "ഒരു നിമിഷം, ഞാൻ വിവരങ്ങൾ നോക്കുകയാണ്.",
+        "wait3": "ശരി, ഞാൻ അതൊന്ന് നോക്കട്ടെ."
+    }
 
-# 1. Load the original model in native float16 (No 'quanto' bugs!)
-print("📥 Loading Original Model natively...")
-model = ParlerTTSForConditionalGeneration.from_pretrained(
-    "ai4bharat/indic-parler-tts", 
-    torch_dtype=torch.float32, 
-    low_cpu_mem_usage=True
-).to(device)
+    for name, text in phrases.items():
+        print(f"🎙️ Generating {name}.wav...")
+        # Get float32 audio at 16000Hz
+        audio_fp32 = tts.tell(text, play=False, sr=16000)
+        
+        # Convert [-1.0, 1.0] float32 to 16-bit PCM integer
+        audio_int16 = (audio_fp32 * 32767).astype(np.int16)
+        
+        # Write to WAV file
+        filepath = f"assets/{name}.wav"
+        with wave.open(filepath, "w") as wav_file:
+            wav_file.setnchannels(1)      # Mono
+            wav_file.setsampwidth(2)      # 2 bytes = 16-bit
+            wav_file.setframerate(16000)  # 16000Hz sample rate
+            wav_file.writeframes(audio_int16.tobytes())
+            
+        print(f"✅ Saved {filepath}")
 
-# 2. Load tokenizers directly
-print("📖 Loading tokenizers...")
-tokenizer = AutoTokenizer.from_pretrained("ai4bharat/indic-parler-tts")
-description_tokenizer = AutoTokenizer.from_pretrained(model.config.text_encoder._name_or_path)
-
-# 3. Persona and Text
-text = "നമസ്കാരം! ഞാൻ സെൻട്രിയാണ്. എൻറെ ശബ്ദം ഇപ്പോൾ കൃത്യമായി കേൾക്കാമോ?"
-description = (
-    "Anjali, a young female speaker, delivers a gentle, empathetic, and warm speech "
-    "with a soft, comforting tone perfect for an admission assistant. "
-    "The recording is very high quality, very clear, and close-up, with no background noise."
-)
-
-desc_inputs = description_tokenizer(description, return_tensors="pt").to(device)
-prompt_inputs = tokenizer(text, return_tensors="pt").to(device)
-
-seed = 42
-torch.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-
-# 4. Generate!
-print("\n🗣️ Generating audio natively on Tensor Cores...")
-with torch.no_grad():
-    generation = model.generate(
-        input_ids=desc_inputs.input_ids,
-        prompt_input_ids=prompt_inputs.input_ids
-    )
-
-audio_arr = generation.cpu().numpy().squeeze()
-
-# If it works, this shape should be around 100,000 to 200,000 (several seconds of audio)
-print(f"📊 Array Shape: {audio_arr.shape}") 
-
-output_filename = "zentry_native_success.wav"
-sf.write(output_filename, audio_arr, model.config.sampling_rate)
-
-print(f"✅ Success! Check {output_filename}")
+if __name__ == "__main__":
+    generate_all_assets()

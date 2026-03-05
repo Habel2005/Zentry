@@ -1,14 +1,14 @@
 import asyncio
 import base64
 import json
-import logging
+import random
 import traceback
 import numpy as np
 import time
 import audioop
 import os
 from backend.vad_stream import VADStreamer
-from llm.brain import handle_llm
+from llm.brain import extract_and_learn, handle_llm
 from db.ai_repo import log_processing_step
 from db.call_repo import log_message, end_call, update_call_metrics
 
@@ -48,6 +48,7 @@ class CallPipeline:
         self.ws = websocket
         self.stt = stt
         self.tts = tts
+        self.is_active = True
         self.is_twilio = False
         
         # [TUNED] VAD Settings for Phone Audio
@@ -68,29 +69,23 @@ class CallPipeline:
                 asyncio.create_task(self.execute_turn(result))
 
     async def send_to_twilio(self, pcm_audio_bytes):
-        """
-        Convert 16kHz PCM -> 8kHz Mu-Law for Twilio
-        """
+        # 🔴 NEW: Abort if the call is already dead
+        if not self.is_active: 
+            return
+            
         try:
-            # 1. Downsample 16000Hz -> 8000Hz
             pcm_8k, _ = audioop.ratecv(pcm_audio_bytes, 2, 1, 16000, 8000, None)
-
-            # 2. Convert Linear PCM -> Mu-law
             mulaw_data = audioop.lin2ulaw(pcm_8k, 2)
-
-            # 3. Base64 Encode
             payload = base64.b64encode(mulaw_data).decode('utf-8')
-
-            # 4. JSON Packet
             message = {
                 "event": "media",
                 "streamSid": self.ctx.uuid,
                 "media": {"payload": payload}
             }
-
             await self.ws.send_text(json.dumps(message))
         except Exception as e:
-            print(f"⚠️ Streaming Error: {e}")
+            # We can silently ignore errors here if the socket just closed
+            pass
 
     # --- 2. THE MISSING FUNCTION ---
     async def play_asset(self, asset_name):
@@ -169,7 +164,17 @@ class CallPipeline:
                 is_greeting = len(text_ml) < 15 or text_ml.strip() in ["ഹലോ", "ഹായ്", "hello"]
                 if not is_greeting:
                     print("⏳ Long query detected. Playing filler audio...")
-                    await self.play_asset("wait")
+                    
+                    # 1. Find all keys in ASSETS that start with "wait" (e.g., wait1, wait2)
+                    wait_options = [key for key in ASSETS.keys() if key.startswith("wait")]
+                    
+                    if wait_options:
+                        # 2. Pick a random one!
+                        selected_wait = random.choice(wait_options)
+                        await self.play_asset(selected_wait)
+                    else:
+                        # Fallback just in case you only have 'wait.wav'
+                        await self.play_asset("wait3")
 
                 # --- 2. BRAIN (LLM) STEP ---
                 llm_start_time = time.time()
@@ -246,8 +251,13 @@ class CallPipeline:
                 )
 
     async def cleanup(self):
-        print(f"🧹 Cleaning up call {self.ctx.call_id}...")
-        try:
-            end_call(self.ctx.call_id)
-        except Exception as e:
-            print(f"Cleanup error: {e}")
+            print(f"🧹 Cleaning up call {self.ctx.call_id}...")
+            self.is_active = False
+            try:
+                # 1. Trigger the background memory extractor
+                asyncio.create_task(extract_and_learn(self.ctx.call_id, self.ctx.phone))
+                
+                # 2. End the call in the DB
+                end_call(self.ctx.call_id)
+            except Exception as e:
+                print(f"Cleanup error: {e}")

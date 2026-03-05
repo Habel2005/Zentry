@@ -4,7 +4,8 @@ import audioop
 import numpy as np
 from fastapi import FastAPI, WebSocket
 from contextlib import asynccontextmanager
-
+from session.session_store import SessionStore
+from llm.brain import init_globals
 # Import your modules
 from backend.call_pipeline import CallPipeline
 from backend.call_context import CallContext
@@ -26,6 +27,11 @@ async def lifespan(app: FastAPI):
     models["stt"] = MalayalamSTT("models/whisper")
     # Change from the local folder to the standard Hugging Face ID
     models["tts"] = TTSModule()
+
+    print("🧠 Initializing Session Memory...")
+    global_store = SessionStore()
+    init_globals(global_store)
+    
     print("✅ AI Models Ready!")
     yield
     models.clear()
