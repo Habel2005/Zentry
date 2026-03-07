@@ -36,9 +36,10 @@ async def extract_and_learn(call_id, phone):
     extraction_prompt = f"""
     Read the following conversation transcript. Your goal is to extract facts about the user.
     Look for:
-    1. The user's name (if they mentioned it).
-    2. Their true underlying interest or motivation regarding college courses.
-    3. Did they agree to schedule a consultation with an admissions officer?
+    1. The user's name.
+    2. Their true underlying interest regarding college courses.
+    3. Did they agree to schedule a consultation?
+    4. Their 12th standard PCM (Physics, Chemistry, Maths) marks/percentage, if mentioned.
     
     Transcript:
     {transcript}
@@ -46,9 +47,10 @@ async def extract_and_learn(call_id, phone):
     Output ONLY a raw JSON object with this exact structure:
     {{
         "user_name": "extracted name or null",
-        "course_interest": "the program code they want (e.g. CSE) or null",
+        "course_interest": "the program code they want or null",
         "motivation_or_notes": "A brief sentence explaining WHY they want it.",
-        "wants_consultation": true or false
+        "wants_consultation": true or false,
+        "pcm_marks": "extracted marks/percentage or null"
     }}
     """
     
@@ -81,17 +83,23 @@ async def extract_and_learn(call_id, phone):
         if extracted_data.get("course_interest"):
             print(f"🧠 Learned Interest: {extracted_data['course_interest']} ({extracted_data.get('motivation_or_notes', '')})")
             
-        # --- ADD CONSULTATION LOGIC ---
+        # --- UPDATE CONSULTATION LOGIC ---
         if extracted_data.get("wants_consultation") is True:
             name_to_save = extracted_data.get("user_name") or "Unknown"
-            print(f"📅 Consultation requested by {name_to_save}")
+            marks_to_save = extracted_data.get("pcm_marks")
+            
+            print(f"📅 Consultation: {name_to_save} (Marks: {marks_to_save})")
             
             sb.table("consultation_requests").insert({
                 "call_id": call_id,
                 "caller_phone": phone,
                 "caller_name": name_to_save,
+                "pcm_marks": marks_to_save, # NEW: Save the marks!
                 "status": "pending"
             }).execute()
+            
+    except Exception as e:
+        print(f"⚠️ Failed to parse LLM extraction: {e}")
             
     except Exception as e:
         print(f"⚠️ Failed to parse LLM extraction: {e}")

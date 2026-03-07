@@ -6,7 +6,7 @@ from llm.rag.ingest_qa import ingest_qa_file
 
 FILES = [
     # The New Master File (Primary Source)
-    ("data/toch.txt", "official_summary", "general"), 
+    ("data/tist_rag_data.txt", "official_summary", "general"), 
     
     # Keep the Q&A doc as it handles specific conversational FAQs well
     #("data/ragQ&A.docx", "counselling_faq", "faq")

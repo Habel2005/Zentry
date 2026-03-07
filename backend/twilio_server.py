@@ -67,6 +67,10 @@ async def twilio_stream(websocket: WebSocket):
                 pipeline.is_twilio = True
                 print(f"✅ Pipeline Attached: {stream_sid}")
 
+                # --- ⚡ NEW: Instantly play the greeting when the call connects! ---
+                import asyncio # Ensure asyncio is imported at the top of the file
+                asyncio.create_task(pipeline.play_asset("intro"))
+
             elif data['event'] == 'media' and pipeline:
                 payload = data['media']['payload']
                 chunk_mulaw = base64.b64decode(payload)
