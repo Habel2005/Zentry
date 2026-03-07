@@ -198,9 +198,6 @@ class CallPipeline:
                     latency_ms=llm_latency
                 )
 
-                # Log AI Message to the chat history!
-                if log_text:
-                    log_message(call_id=self.ctx.call_id, speaker="ai", raw_text=log_text)
 
                 if not content: return
 
