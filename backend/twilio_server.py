@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
     
     if tts_mode == "sarvam":
         print("☁️ Using SARVAM Cloud TTS")
-        models["tts"] = SarvamTTS(api_key="")
+        models["tts"] = SarvamTTS(api_key="sk_zh6900yz_tkbf3QJMXUUIfeQTZE2rYipJ")
     else:
         print("💻 Using PIPER Local TTS")
         models["tts"] = TTSModule()

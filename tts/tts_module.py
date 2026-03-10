@@ -91,7 +91,7 @@ class TTSModule:
         if not text or not text.strip():
             return np.zeros(sr, dtype=np.float32)
         
-        clean_text = normalize_for_tts(text)
+        clean_text = normalize_for_piper(text)
 
         try:
             audio_bytes = b""
@@ -141,7 +141,6 @@ class TTSModule:
             logging.error(f"TTS Error: {e}")
             return np.zeros(sr, dtype=np.float32)
         
-
 import asyncio
 import websockets
 import json
@@ -153,99 +152,132 @@ class SarvamTTS:
         self.api_key = api_key
         self.ws = None
         self.listen_task = None
-        self.ping_task = None # <--- NEW
+        self.ping_task = None 
         self.twilio_send_func = None
         
         self.audio_finished_event = asyncio.Event()
         self.ttfb = 0 
+        self._current_start_time = 0 
+        self.is_connected = False # <--- NEW: Our own reliable state tracker
 
     async def connect(self, twilio_send_func):
         self.twilio_send_func = twilio_send_func
-        # NOTE: You are currently missing the actual connection logic here in your file!
-        # Make sure you didn't accidentally delete the actual websocket.connect part.
+        
+        # Check our own flag instead of the library's internal state
+        if self.ws and self.is_connected:
+            return
+            
         uri = "wss://api.sarvam.ai/text-to-speech/ws?model=bulbul:v3&send_completion_event=true"
         try:
             self.ws = await websockets.connect(uri, additional_headers={"Api-Subscription-Key": self.api_key})
+            self.is_connected = True # <--- MARK AS OPEN
             
-            # Send initial config 
+            # Send config with 16000Hz to match Zentry's pipeline
+# Send config with 16000Hz and LINEAR16 to match Zentry's pipeline
             await self.ws.send(json.dumps({
                 "type": "config",
                 "data": {
                     "target_language_code": "ml-IN", 
                     "speaker": "ritu",
-                    "speech_sample_rate": "8000" 
+                    "speech_sample_rate": "16000",
+                    "output_audio_codec": "linear16"  # <--- THIS FIXES THE SCREAMING!
                 }
             }))
             
+            if self.listen_task: self.listen_task.cancel()
+            if self.ping_task: self.ping_task.cancel()
+            
             self.listen_task = asyncio.create_task(self._listen_for_audio())
-            self.ping_task = asyncio.create_task(self._keep_alive_ping()) # <--- NEW
-            print("✅ Sarvam WebSocket Connected")
+            self.ping_task = asyncio.create_task(self._keep_alive_ping())
+            print("✅ Sarvam WebSocket Connected (16000Hz)")
         except Exception as e:
+            self.is_connected = False
             print(f"❌ Sarvam Connection Failed: {e}")
 
-    # --- NEW KEEPALIVE LOOP ---
     async def _keep_alive_ping(self):
-        """Sends a ping every 45 seconds to prevent the 1-minute timeout"""
+        """Sends a ping every 20 seconds to prevent the 1-minute timeout"""
         try:
             while True:
-                await asyncio.sleep(45) # Wait 45 seconds
-                if self.ws and not self.ws.closed:
-                    await self.ws.send(json.dumps({"type": "ping"}))
+                await asyncio.sleep(20) 
+                if self.is_connected and self.ws:
+                    try:
+                        await self.ws.send(json.dumps({"type": "ping"}))
+                    except Exception:
+                        self.is_connected = False # Mark dead if ping fails
         except asyncio.CancelledError:
-            pass # Task was intentionally cancelled during cleanup
-        except Exception as e:
-            pass
+            pass 
 
     async def _listen_for_audio(self):
-        start_time = 0
         try:
             while True:
+                if not self.is_connected or not self.ws:
+                    break
+                    
                 message = await self.ws.recv()
                 response = json.loads(message)
                 
                 if response.get("type") == "audio":
-                    # Capture Time To First Byte (TTFB) on the very first chunk
-                    if start_time != 0:
-                        self.ttfb = int((time.time() - start_time) * 1000)
-                        start_time = 0 # Reset so we don't trigger it again this sentence
+                    if self._current_start_time != 0:
+                        self.ttfb = int((time.time() - self._current_start_time) * 1000)
+                        self._current_start_time = 0 
                         
                     audio_bytes = base64.b64decode(response["data"]["audio"])
                     if self.twilio_send_func:
                         await self.twilio_send_func(audio_bytes)
                         
                 elif response.get("type") == "event" and response.get("data", {}).get("event_type") == "final":
-                    # Tell the main pipeline that Sarvam has finished generating!
                     self.audio_finished_event.set()
                     
         except websockets.exceptions.ConnectionClosed:
-            pass
+            print("🔌 Sarvam WS connection closed by server.")
+            self.is_connected = False # <--- MARK AS CLOSED
+            self.audio_finished_event.set() 
+        except Exception as e:
+            print(f"⚠️ Sarvam listener error: {e}")
+            self.is_connected = False
+            self.audio_finished_event.set()
 
     async def tell(self, text):
         """Called by your LLM to trigger speech"""
-        if not self.ws: return
+        
+        # 1. AUTO-RECONNECT: Use our reliable flag!
+        if not self.is_connected:
+            print("⚠️ Sarvam disconnected. Auto-reconnecting...")
+            await self.connect(self.twilio_send_func)
             
-        # 1. Reset our trackers for this new sentence
+        if not self.ws or not self.is_connected: 
+            return 0
+            
+        # 2. Reset our trackers
         self.audio_finished_event.clear()
-        
-        # Hacky way to pass the start time to the background task
-        self.ws.start_time_tracker = time.time() 
+        self._current_start_time = time.time() 
 
-        # 2. Send the text
-        await self.ws.send(json.dumps({"type": "text", "data": {"text": text}}))
-        await self.ws.send(json.dumps({"type": "flush"}))
+        try:
+            # 3. Send the text
+            await self.ws.send(json.dumps({"type": "text", "data": {"text": text}}))
+            await self.ws.send(json.dumps({"type": "flush"}))
 
-        # 3. CRITICAL: Wait here until the background task receives the "final" event!
-        # This keeps your pipeline locked so VAD doesn't interrupt.
-        await self.audio_finished_event.wait()
-        
-        # Return the TTFB so your pipeline can log it!
+            # 4. Wait for completion with a SAFETY TIMEOUT (15s)
+            try:
+                await asyncio.wait_for(self.audio_finished_event.wait(), timeout=15.0)
+            except asyncio.TimeoutError:
+                print("⚠️ Sarvam Timeout waiting for 'final' event.")
+                
+        except websockets.exceptions.ConnectionClosed:
+            print("⚠️ Connection closed while sending text.")
+            self.is_connected = False # Update flag if sending fails
+
         return self.ttfb
     
     async def close(self):
         """Called by call_pipeline.py on hangup"""
+        self.is_connected = False
         if self.ws:
-            await self.ws.close()
+            try:
+                await self.ws.close()
+            except Exception:
+                pass
         if self.listen_task:
             self.listen_task.cancel()
         if self.ping_task:
-            self.ping_task.cancel() # <--- NEW
+            self.ping_task.cancel()
