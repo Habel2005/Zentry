@@ -55,6 +55,11 @@ class CallPipeline:
         self.vad = VADStreamer(sample_rate=16000, threshold=0.2, min_energy=0.015)
         self.processing_lock = asyncio.Lock()
 
+        # NEW: If using Sarvam, connect the WebSocket right now!
+        if hasattr(self.tts, 'connect'):
+            # Pass our Twilio sender directly to the TTS module
+            asyncio.create_task(self.tts.connect(self.send_to_twilio))
+
     async def handle_audio(self, chunk):
         # 1. STRICT LOCK: Walkie-Talkie mode
         if self.processing_lock.locked():
@@ -111,9 +116,6 @@ class CallPipeline:
         except Exception as e:
             print(f"⚠️ Asset Playback Error: {e}")
 
-
-    async def execute_turn(self, audio_bytes):
-        if self.processing_lock.locked(): return
         
     async def execute_turn(self, audio_bytes):
         if self.processing_lock.locked(): return
@@ -206,11 +208,25 @@ class CallPipeline:
                     await self.play_asset(content)
                 else:
                     tts_start_time = time.time()
-                    
                     print(f"⏳ Generating TTS for: {log_text[:20]}...")
-                    audio_data_np = await asyncio.to_thread(self.tts.tell, content, play=False, sr=16000)
-                    
-                    tts_latency = int((time.time() - tts_start_time) * 1000)
+
+                    if hasattr(self.tts, 'connect'):
+                        # SARVAM MODE: It now blocks until finished and returns TTFB!
+                        ttfb_ms = await self.tts.tell(content)
+                        tts_latency = ttfb_ms if ttfb_ms else int((time.time() - tts_start_time) * 1000)
+                    else:
+                        # PIPER MODE
+                        audio_data_np = await asyncio.to_thread(self.tts.tell, content, play=False, sr=16000)
+                        if audio_data_np is None: return
+
+                        audio_bytes_total = (audio_data_np * 32767).astype(np.int16).tobytes()
+                        CHUNK_SIZE = 1280
+                        for i in range(0, len(audio_bytes_total), CHUNK_SIZE):
+                            chunk = audio_bytes_total[i:i+CHUNK_SIZE]
+                            await self.send_to_twilio(chunk)
+                            await asyncio.sleep(0.04)
+                            
+                        tts_latency = int((time.time() - tts_start_time) * 1000)
                     
                     # Log TTS Processing Step
                     log_processing_step(
@@ -219,17 +235,8 @@ class CallPipeline:
                         input_data={"text_to_speak": content},
                         output_data={"audio_generated": True},
                         status="success",
-                        latency_ms=tts_latency
+                        latency_ms=tts_latency # <--- NOW ACCURATE!
                     )
-
-                    if audio_data_np is None: return
-
-                    audio_bytes_total = (audio_data_np * 32767).astype(np.int16).tobytes()
-                    CHUNK_SIZE = 1280
-                    for i in range(0, len(audio_bytes_total), CHUNK_SIZE):
-                        chunk = audio_bytes_total[i:i+CHUNK_SIZE]
-                        await self.send_to_twilio(chunk)
-                        await asyncio.sleep(0.04)
 
                 print("✅ Turn Complete.")
 
@@ -250,6 +257,10 @@ class CallPipeline:
     async def cleanup(self):
             print(f"🧹 Cleaning up call {self.ctx.call_id}...")
             self.is_active = False
+
+            if hasattr(self.tts, 'close'):
+                await self.tts.close()
+
             try:
                 # 1. Trigger the background memory extractor
                 asyncio.create_task(extract_and_learn(self.ctx.call_id, self.ctx.phone))

@@ -142,4 +142,70 @@ class TTSModule:
             return np.zeros(sr, dtype=np.float32)
         
 
+import asyncio
+import websockets
+import json
+import base64
+import time
 
+class SarvamTTS:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.ws = None
+        self.listen_task = None
+        self.twilio_send_func = None
+        
+        # NEW: Events to track exactly when audio starts and stops
+        self.audio_finished_event = asyncio.Event()
+        self.ttfb = 0 
+
+    async def connect(self, twilio_send_func):
+        self.twilio_send_func = twilio_send_func
+        uri = "wss://api.sarvam.ai/text-to-speech/ws?model=bulbul:v3&send_completion_event=true"
+        # ... (keep your existing connect logic here) ...
+        self.listen_task = asyncio.create_task(self._listen_for_audio())
+
+    async def _listen_for_audio(self):
+        start_time = 0
+        try:
+            while True:
+                message = await self.ws.recv()
+                response = json.loads(message)
+                
+                if response.get("type") == "audio":
+                    # Capture Time To First Byte (TTFB) on the very first chunk
+                    if start_time != 0:
+                        self.ttfb = int((time.time() - start_time) * 1000)
+                        start_time = 0 # Reset so we don't trigger it again this sentence
+                        
+                    audio_bytes = base64.b64decode(response["data"]["audio"])
+                    if self.twilio_send_func:
+                        await self.twilio_send_func(audio_bytes)
+                        
+                elif response.get("type") == "event" and response.get("data", {}).get("event_type") == "final":
+                    # Tell the main pipeline that Sarvam has finished generating!
+                    self.audio_finished_event.set()
+                    
+        except websockets.exceptions.ConnectionClosed:
+            pass
+
+    async def tell(self, text):
+        """Called by your LLM to trigger speech"""
+        if not self.ws: return
+            
+        # 1. Reset our trackers for this new sentence
+        self.audio_finished_event.clear()
+        
+        # Hacky way to pass the start time to the background task
+        self.ws.start_time_tracker = time.time() 
+
+        # 2. Send the text
+        await self.ws.send(json.dumps({"type": "text", "data": {"text": text}}))
+        await self.ws.send(json.dumps({"type": "flush"}))
+
+        # 3. CRITICAL: Wait here until the background task receives the "final" event!
+        # This keeps your pipeline locked so VAD doesn't interrupt.
+        await self.audio_finished_event.wait()
+        
+        # Return the TTFB so your pipeline can log it!
+        return self.ttfb

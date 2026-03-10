@@ -11,7 +11,7 @@ from backend.call_pipeline import CallPipeline
 from backend.call_context import CallContext
 from db.call_repo import start_call
 from backend.stt_worker import MalayalamSTT
-from tts.tts_module import TTSModule
+from tts.tts_module import SarvamTTS, TTSModule
 
 # --- GLOBAL MODELS ---
 models = {}
@@ -26,7 +26,14 @@ async def lifespan(app: FastAPI):
     # The existing code used "models/whisper" and "models/tts/tts_mal.onnx"
     models["stt"] = MalayalamSTT("models/whisper")
     # Change from the local folder to the standard Hugging Face ID
-    models["tts"] = TTSModule()
+    tts_mode="sarvam"
+    
+    if tts_mode == "sarvam":
+        print("☁️ Using SARVAM Cloud TTS")
+        models["tts"] = SarvamTTS(api_key="")
+    else:
+        print("💻 Using PIPER Local TTS")
+        models["tts"] = TTSModule()
 
     print("🧠 Initializing Session Memory...")
     global_store = SessionStore()
