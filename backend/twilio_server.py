@@ -76,7 +76,7 @@ async def twilio_stream(websocket: WebSocket):
 
                 # --- ⚡ NEW: Instantly play the greeting when the call connects! ---
                 import asyncio # Ensure asyncio is imported at the top of the file
-                asyncio.create_task(pipeline.play_asset("intro"))
+                asyncio.create_task(pipeline.play_asset("welcome"))
 
             elif data['event'] == 'media' and pipeline:
                 payload = data['media']['payload']
