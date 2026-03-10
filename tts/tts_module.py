@@ -153,17 +153,48 @@ class SarvamTTS:
         self.api_key = api_key
         self.ws = None
         self.listen_task = None
+        self.ping_task = None # <--- NEW
         self.twilio_send_func = None
         
-        # NEW: Events to track exactly when audio starts and stops
         self.audio_finished_event = asyncio.Event()
         self.ttfb = 0 
 
     async def connect(self, twilio_send_func):
         self.twilio_send_func = twilio_send_func
+        # NOTE: You are currently missing the actual connection logic here in your file!
+        # Make sure you didn't accidentally delete the actual websocket.connect part.
         uri = "wss://api.sarvam.ai/text-to-speech/ws?model=bulbul:v3&send_completion_event=true"
-        # ... (keep your existing connect logic here) ...
-        self.listen_task = asyncio.create_task(self._listen_for_audio())
+        try:
+            self.ws = await websockets.connect(uri, additional_headers={"Api-Subscription-Key": self.api_key})
+            
+            # Send initial config 
+            await self.ws.send(json.dumps({
+                "type": "config",
+                "data": {
+                    "target_language_code": "ml-IN", 
+                    "speaker": "ritu",
+                    "speech_sample_rate": "8000" 
+                }
+            }))
+            
+            self.listen_task = asyncio.create_task(self._listen_for_audio())
+            self.ping_task = asyncio.create_task(self._keep_alive_ping()) # <--- NEW
+            print("✅ Sarvam WebSocket Connected")
+        except Exception as e:
+            print(f"❌ Sarvam Connection Failed: {e}")
+
+    # --- NEW KEEPALIVE LOOP ---
+    async def _keep_alive_ping(self):
+        """Sends a ping every 45 seconds to prevent the 1-minute timeout"""
+        try:
+            while True:
+                await asyncio.sleep(45) # Wait 45 seconds
+                if self.ws and not self.ws.closed:
+                    await self.ws.send(json.dumps({"type": "ping"}))
+        except asyncio.CancelledError:
+            pass # Task was intentionally cancelled during cleanup
+        except Exception as e:
+            pass
 
     async def _listen_for_audio(self):
         start_time = 0
@@ -209,3 +240,12 @@ class SarvamTTS:
         
         # Return the TTFB so your pipeline can log it!
         return self.ttfb
+    
+    async def close(self):
+        """Called by call_pipeline.py on hangup"""
+        if self.ws:
+            await self.ws.close()
+        if self.listen_task:
+            self.listen_task.cancel()
+        if self.ping_task:
+            self.ping_task.cancel() # <--- NEW
