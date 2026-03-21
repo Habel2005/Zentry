@@ -1,51 +1,43 @@
-# Sambashini (Project Zentry)
+# Zentry: Malayalam AI Telephony Assistant
 
-**Real-Time, On-Premise Malayalam AI Telephony Assistant**
+**Real-Time, AI-Driven Voice Assistant for College Admissions**
 
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
-![FreeSwitch](https://img.shields.io/badge/FreeSwitch-000000?style=flat-square&logo=freeswitch&logoColor=white)
-![Whisper](https://img.shields.io/badge/Whisper_STT-00A67E?style=flat-square&logo=openai&logoColor=white)
-![Phi-4](https://img.shields.io/badge/Phi--4_Mini-0078D4?style=flat-square&logo=microsoft&logoColor=white)
-![Piper TTS](https://img.shields.io/badge/Piper_TTS-FF4500?style=flat-square)
+![Twilio](https://img.shields.io/badge/Twilio-F22F46?style=flat-square&logo=twilio&logoColor=white)
+![Whisper](https://img.shields.io/badge/Whisper_Medium-00A67E?style=flat-square&logo=openai&logoColor=white)
+![Phi-4](https://img.shields.io/badge/Phi--4-0078D4?style=flat-square&logo=microsoft&logoColor=white)
 
-Sambashini is a fully on-premise, AI-driven telephony assistant designed specifically to handle college admission inquiries for TIST (Toc H Institute). It processes natural spoken Malayalam in real-time, providing accurate, conversational responses to prospective students and parents over standard phone calls.
+Zentry is a real-time AI telephony assistant designed to handle college admission inquiries for TIST (Toc H Institute of Science and Technology). It processes natural spoken Malayalam, retrieves accurate admissions data, and responds contextually over a standard phone call.
 
 ---
 
-### 🏗 Architecture Overview
+### 🏗 Architecture & Flow
 
-<img src="https://lh3.googleusercontent.com/d/1dqbGE94BuyL6ebUeid1CpidQvso7omkY" width="800" alt="Architecture Diagram">
+<p align="center">
+  <img src="https://drive.google.com/uc?export=view&id=1dqbGE94BuyL6ebUeid1CpidQvso7omkY" alt="Zentry Architecture Diagram" width="800">
+</p>
 
-The system operates entirely locally to ensure data privacy and minimize latency. The pipeline handles raw SIP audio streams, converts Malayalam speech to text, processes the intent via a local LLM, and synthesizes a natural Malayalam voice response.
+The system connects callers via a cloud telephony gateway to a local inference engine. Audio streams are transcribed, translated, processed for intent, and synthesized back into Malayalam speech with sub-second latency targets.
 
 ---
 
 ### ⚙️ Core Tech Stack
 
-*   **Telephony Server:** [FreeSWITCH](https://freeswitch.com/) handles incoming SIP trunks and RTP audio streams.
-*   **Speech-to-Text (STT):** [OpenAI Whisper](https://github.com/openai/whisper) for high-accuracy Malayalam audio transcription.
-*   **Translation Layer:** [IndicTrans2](https://github.com/AI4Bharat/IndicTrans2) for bridging Malayalam transcripts with the core reasoning engine.
-*   **Large Language Model (LLM):** **Phi-4 Mini** running locally to evaluate queries, fetch admissions data, and generate context-aware responses.
-*   **Text-to-Speech (TTS):** **Piper / Parler TTS** configured with custom acoustic models for natural-sounding Malayalam voice generation.
-
----
-
-### ✨ Key Features
-
-*   **Real-Time Voice Processing:** Optimized pipeline for sub-second latency from speech endpointing to audio playback.
-*   **100% On-Premise:** No dependency on external cloud APIs (like OpenAI or Google Cloud) during runtime, ensuring zero recurring API costs and strict data privacy.
-*   **Native Malayalam Support:** Tailored specifically for the linguistic nuances of Malayalam speakers.
-*   **Admissions Knowledge Base:** Grounded in TIST-specific data (courses, fees, hostel availability, cutoffs) to prevent hallucination.
+* **Telephony Gateway:** **Twilio** handles incoming calls, bridging the SIP/voice traffic to the backend processing server.
+* **Speech-to-Text (STT):** **Whisper Medium (Fine-tuned)** using the custom Malayalam weights trained by *thennal* for superior dialect recognition and accuracy.
+* **Translation Layer:** **IndicTrans2** bridges the Malayalam audio transcripts with the English-centric reasoning engine.
+* **Reasoning Engine (LLM):** **Phi-4** evaluates queries, fetches TIST-specific admissions data, and constructs the response.
+* **Text-to-Speech (TTS):** A hybrid approach utilizing optimized TTS models (incorporating frameworks like Piper and Parler) to generate natural, real-time Malayalam audio.
 
 ---
 
 ### 🚀 Getting Started
 
 #### Prerequisites
-*   Ubuntu 22.04 LTS (Recommended)
-*   Python 3.10+
-*   FreeSWITCH installed and configured with SIP trunks.
-*   CUDA-compatible GPU (NVIDIA RTX 3000 series or higher recommended for real-time STT/LLM inference).
+* Ubuntu 22.04 LTS (Recommended) / Windows with WSL2
+* Python 3.10+
+* Twilio Account (SID, Auth Token, and active phone number)
+* CUDA-compatible GPU for local model inference
 
 #### Installation
 
@@ -55,41 +47,41 @@ The system operates entirely locally to ensure data privacy and minimize latency
    cd zentry
    ```
 
-2.  **Set up the virtual environment:**
+2. **Set up the virtual environment:**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Windows: venv\Scripts\activate
+   ```
 
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows: venv\Scripts\activate
-    ```
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-3.  **Install dependencies:**
+4. **Environment Variables:**
+   Create a `.env` file and add your Twilio credentials and server configurations.
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+5. **Start the Application:**
+   ```bash
+   python src/app.py
+   ```
 
-4.  **Download Model Weights:**
+---
 
-      * Run the fetching script to download Whisper, IndicTrans2, Phi-4 Mini, and TTS models to the `models/` directory.
+### 📖 The Journey: Building Zentry
 
-    <!-- end list -->
+Building an AI that speaks native Malayalam and operates over a phone line required navigating a complex landscape of telecom protocols and rapidly evolving open-source models. Here is the story of how the current stack came to be:
 
-    ```bash
-    python scripts/download_models.py
-    ```
+#### The Telephony Struggle: Asterisk -> FreeSWITCH -> Twilio
+The initial vision was a completely on-premise PBX system. The journey started with **Asterisk**, but the configuration and SIP trunking complexities proved to be a heavy bottleneck. The next logical step was **FreeSWITCH**, which offered better documentation for modern application integration. However, managing RTP audio streams, compiling modules, and battling firewall NAT issues took focus away from the AI logic. Ultimately, the architecture pivoted to **Twilio**. Offloading the telecom infrastructure to Twilio's reliable cloud APIs allowed for a streamlined focus purely on the conversational AI and low-latency websocket streaming.
 
-5.  **Start the FreeSWITCH Event Socket Layer (ESL) Server:**
+#### The LLM Dilemma: Native Models vs. Translation
+Finding an LLM that could "think" and "speak" Malayalam accurately was the biggest hurdle. Extensive testing was done in Google Colab, heavily evaluating various open-weight models using custom prompts. 
+* **Native Fine-tunes:** Models like Sarvam, and various Malayalam fine-tunes of Llama and Gemma were tested. While promising, they often hallucinated, struggled with complex reasoning regarding college data, or lacked the inference speed needed for real-time voice.
+* **The Pivot:** The solution was a translation bridge. By utilizing **IndicTrans2**, Malayalam input is seamlessly translated to English, processed by the highly capable and fast **Phi-4** model, and then translated back. This guaranteed high-quality reasoning without sacrificing linguistic accuracy.
 
-    ```bash
-    python src/main.py
-    ```
+#### Solving the Speech Pipeline (STT & TTS)
+* **Hearing (STT):** Standard Whisper models struggled with the specific intonations and speed of conversational Malayalam. The breakthrough came by integrating a **Whisper Medium model fine-tuned by *thennal***, which drastically improved transcription accuracy.
+* **Speaking (TTS):** Finding a natural Malayalam voice was an iterative grind. The project cycled through almost every open-source TTS framework available—testing Coqui, exploring MMS (Massively Multilingual Speech), and experimenting with Parler. The final TTS pipeline leverages a tailored configuration (often relying on Piper's efficiency) to balance realistic voice inflection with the strict latency requirements of a live phone call.
 
------
-
-### 🤝 Contributing
-
-Contributions are welcome. Please ensure that any pull requests maintaining the on-premise, offline-first philosophy of the project.
-
-### 📄 License
-
-[MIT License](https://www.google.com/search?q=LICENSE)
+Zentry is the result of continuous prototyping, testing, and pivoting to find the perfect balance between local AI inference and reliable telecom infrastructure.
