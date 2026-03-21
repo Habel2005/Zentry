@@ -14,7 +14,7 @@ Sambashini is a fully on-premise, AI-driven telephony assistant designed specifi
 
 ### 🏗 Architecture Overview
 
-![Sambashini Architecture Flow]([./assets/architecture-diagram.png](https://drive.google.com/file/d/1dqbGE94BuyL6ebUeid1CpidQvso7omkY/view?usp=sharing))
+![Sambashini Architecture Flow](https://drive.google.com/file/d/1dqbGE94BuyL6ebUeid1CpidQvso7omkY/view?usp=sharing)
 
 The system operates entirely locally to ensure data privacy and minimize latency. The pipeline handles raw SIP audio streams, converts Malayalam speech to text, processes the intent via a local LLM, and synthesizes a natural Malayalam voice response.
 
