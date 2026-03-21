@@ -39,7 +39,7 @@ The system connects callers via a cloud telephony gateway to a local inference e
 * Twilio Account (SID, Auth Token, and active phone number)
 * CUDA-compatible GPU for local model inference
 
-#### Installation
+#### Installation (try to use the "new" branch)
 
 1. **Clone the repository:**
    ```bash
@@ -63,7 +63,7 @@ The system connects callers via a cloud telephony gateway to a local inference e
 
 5. **Start the Application:**
    ```bash
-   python src/app.py
+   python -m backend.main_server
    ```
 
 ---
