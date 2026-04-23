@@ -85,3 +85,7 @@ Finding an LLM that could "think" and "speak" Malayalam accurately was the bigge
 * **Speaking (TTS):** Finding a natural Malayalam voice was an iterative grind. The project cycled through almost every open-source TTS framework available—testing Coqui, exploring MMS (Massively Multilingual Speech), and experimenting with Parler. The final TTS pipeline leverages a tailored configuration (often relying on Piper's efficiency) to balance realistic voice inflection with the strict latency requirements of a live phone call.
 
 Zentry is the result of continuous prototyping, testing, and pivoting to find the perfect balance between local AI inference and reliable telecom infrastructure.
+
+
+
+<img src="https://static.scarf.sh/a.png?x-pxid=0b994c4e-62ce-47f6-8af6-27235e610eec" width="0" height="0" alt="" />
